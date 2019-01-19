@@ -1,0 +1,4 @@
+"0","#cumulative scree plot"
+"0","plot(cumsum(variance.proportion), xlab = ""Principal Component"","
+"0","              ylab = ""Cumulative Proportion of Variance Explained"","
+"0","              type = ""b"")"

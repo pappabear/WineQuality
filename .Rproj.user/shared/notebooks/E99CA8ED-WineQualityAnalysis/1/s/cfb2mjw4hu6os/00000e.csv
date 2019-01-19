@@ -1,0 +1,4 @@
+"0","# build the training dataset from PCA"
+"0","dataset.training.pca <- data.frame(quality = dataset.training$quality, pca$x)"
+"0","dataset.training.pca <- dataset.training.pca[,1:10]"
+"0","dataset.training.pca"

@@ -1,0 +1,23 @@
+"0","# return the training dataset to the original state"
+"0","dataset.training <- dataset.training.original"
+"0","set.seed(100)"
+"0","ctrl <- rfeControl(functions = rfFuncs,"
+"0","                   method = ""repeatedcv"","
+"0","                   repeats = 5,"
+"0","                   verbose = FALSE)"
+"0","lmProfile <- rfe(x=dataset.red.wines[, 1:11], y=dataset.red.wines$quality, rfeControl=ctrl)"
+"0","lmProfile"
+"1","
+Recursive feature selection
+
+"
+"1","Outer resampling method:"
+"1"," "
+"1","Cross-Validated (10 fold, repeated 5 times)"
+"1"," "
+"1","
+"
+"1","
+Resampling performance over subset size:
+
+"

@@ -1,0 +1,6 @@
+"0","# determine the proportion of variance explained by each variable"
+"0","variance.proportion <- pca$sdev^2"
+"0","# use scree plot to determine how many variables to use in modeling"
+"0","plot(variance.proportion, xlab = ""Principal Component"","
+"0","             ylab = ""Proportion of Variance Explained"","
+"0","             type = ""b"")"

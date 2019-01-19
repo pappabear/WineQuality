@@ -1,0 +1,8 @@
+"0","set.seed(100)"
+"0","# train random forest"
+"0","model.rf = train(quality ~ ., "
+"0","                 data=dataset.training, "
+"0","                 method='rf', "
+"0","                 tuneLength=5, "
+"0","                 preProcess = c(""center"", ""scale""),"
+"0","                 trControl = fit.control)"

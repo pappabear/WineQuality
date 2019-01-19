@@ -1,0 +1,5 @@
+"0","# convert the quality attribute to a real 3-level factor"
+"0","dataset.red.wines$quality[which(dataset.red.wines$quality == 3 | dataset.red.wines$quality == 4)] <- 'poor'"
+"0","dataset.red.wines$quality[which(dataset.red.wines$quality == 5 | dataset.red.wines$quality == 6)] <- 'good'"
+"0","dataset.red.wines$quality[which(dataset.red.wines$quality == 7 | dataset.red.wines$quality == 8)] <- 'great'"
+"0","dataset.red.wines$quality <- as.factor(dataset.red.wines$quality)"

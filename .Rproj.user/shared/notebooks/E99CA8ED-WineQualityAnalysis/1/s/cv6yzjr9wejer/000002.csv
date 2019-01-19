@@ -1,0 +1,7 @@
+"0","set.seed(100)"
+"0","# Step 1: get row numbers for the training data"
+"0","training.row.numbers <- createDataPartition(dataset.red.wines$quality, p=0.8, list=FALSE)"
+"0","# Step 2: create the training  dataset"
+"0","dataset.training <- dataset.red.wines[training.row.numbers,]"
+"0","# Step 3: create the test dataset"
+"0","dataset.testing <- dataset.red.wines[-training.row.numbers,]"

@@ -1,0 +1,4 @@
+"0","par(mfrow=c(1,3))"
+"0","  for(i in 1:3) {"
+"0","  boxplot(x[,i] ~ y, main=c(""quality vs "",names(dataset.red.wines)[i]))"
+"0","  }"

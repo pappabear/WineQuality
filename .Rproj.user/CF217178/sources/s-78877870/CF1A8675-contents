@@ -1,0 +1,684 @@
+---
+title: "Classifying Wine Quality"
+output:
+  html_document:
+    df_print: paged
+---
+
+***
+#### Problem statement
+
+Determine what constitutes a “good” quality wine based on the physicochemical predictors.
+
+Knowing what makes a good wine was an interesting question because it allows us to look at “taste” in a different way–without formal training in wine tasting, we can determine algorithmically how and why a wine is good using machine learning.
+
+Determine which of the 11 physicochemical predictors are most important, and build a classifier to predict the target "quality" attribute.
+
+***
+#### Data dictionary about the datasets
+
+Physicochemical predictors:
+
+1 - fixed acidity   
+2 - volatile acidity  
+3 - citric acid  
+4 - residual sugar  
+5 - chlorides  
+6 - free sulfur dioxide  
+7 - total sulfur dioxide  
+8 - density  
+9 - pH  
+10 - sulphates  
+11 - alcohol  
+
+Output variable (based on sensory data):  
+12 - quality (score between 0 and 10)  
+
+***
+#### Install the necessary libraries
+
+```{r}
+options(warn=-1)
+library(caret)
+library(dplyr)
+library(skimr)
+library(RANN)
+library(e1071)
+library(PerformanceAnalytics)
+library(outliers)
+```
+
+***
+#### Load the data
+
+```{r}
+dataset.red.wines <- read.csv('winequality-red.csv', sep = ";")
+```
+
+***
+#### Explore the data
+
+```{r}
+str(dataset.red.wines)
+```
+
+```{r}
+head(dataset.red.wines)
+```
+
+```{r}
+skim_to_wide(dataset.red.wines)
+```
+
+```{r}
+summary(dataset.red.wines)
+```
+
+***
+#### Feature plotting
+
+```{r}
+x = dataset.red.wines[,1:11]
+y = dataset.red.wines$quality
+
+chart.Correlation(x, bg=y)
+```
+
+This chart contains a LOT of information: On the diagonal are the univariate distributions, plotted as histograms and kernel density plots. On the right of the diagonal are the pair-wise correlations, with red stars signifying significance levels. As the correlations get bigger the font size of the coefficient gets bigger. On the left side of the diagonal is the scatter-plot matrix, with loess smoothers in red to help illustrate the underlying relationship.
+
+These distributions indicate a large issue with outliers.
+
+Dig deeper into the outliers by using a boxplot visualization.
+
+##### Outlier Analysis
+
+```{r}
+# boxplots 
+par(mfrow=c(1,6))
+  for(i in 1:6) {
+  boxplot(x[,i], main=names(dataset.red.wines)[i])
+  }
+```
+
+```{r}
+par(mfrow=c(1,5))
+for(i in 7:11) {
+  boxplot(x[,i], main=names(dataset.red.wines)[i])
+  }
+```
+
+Most of the variables have a high number of outliers.  Modelling later will need to experiment with outlier treatment, such as imputation, capping, or omission.
+
+##### Correlation between "quality" and other predictors
+
+```{r}
+par(mfrow=c(1,3))
+  for(i in 1:3) {
+  boxplot(x[,i] ~ y, main=c("quality vs ",names(dataset.red.wines)[i]))
+  }
+
+```
+
+```{r}
+par(mfrow=c(1,3))
+  for(i in 4:6) {
+  boxplot(x[,i] ~ y, main=c("quality vs ",names(dataset.red.wines)[i]))
+  }
+
+```
+
+```{r}
+par(mfrow=c(1,3))
+  for(i in 7:9) {
+  boxplot(x[,i] ~ y, main=c("quality vs ",names(dataset.red.wines)[i]))
+  }
+
+```
+
+```{r}
+par(mfrow=c(1,3))
+  for(i in 10:11) {
+  boxplot(x[,i] ~ y, main=c("quality vs ",names(dataset.red.wines)[i]))
+  }
+
+```
+
+
+```{r}
+# skew analysis
+#ggplot(dataset.red.wines, aes(x=alcohol)) + 
+#  geom_density() +
+#  geom_vline(aes(xintercept=mean(alcohol)),
+#          color="blue", linetype="dashed", size=1)
+```
+
+***
+#### Observations about the data
+
+##### Imputation
+* No missing values
+
+##### Outliers
+* The plots show outliers - they are 1.5 times the IQR (interquartile range) more extreme than the quartiles of the distribution
+* Every predictor has *some* outliers and only *citric.acid* has just a single outlier
+* *Chlorides*, *pH*, and *density* have outliers above and below the distribution
+* The predictors with outliers on the high side are artificially moving the mean off the visible center of the curve, and vice versa.
+
+##### Correlation
+* There is a negative correlation between the target *quality* and the predictors *volatile acidity*, *pH*, and *density*.
+* There is a positive correlation between the target *quality* and the predictors *citric acid*, *sulphates*, and *alcohol*.
+
+
+***
+#### Create training and validation datasets
+
+```{r}
+# convert the quality attribute to a real 3-level factor
+dataset.red.wines$quality[which(dataset.red.wines$quality == 3 | dataset.red.wines$quality == 4)] <- 'poor'
+dataset.red.wines$quality[which(dataset.red.wines$quality == 5 | dataset.red.wines$quality == 6)] <- 'good'
+dataset.red.wines$quality[which(dataset.red.wines$quality == 7 | dataset.red.wines$quality == 8)] <- 'great'
+dataset.red.wines$quality <- as.factor(dataset.red.wines$quality)
+```
+
+
+```{r}
+set.seed(100)
+
+# Step 1: get row numbers for the training data
+training.row.numbers <- createDataPartition(dataset.red.wines$quality, p=0.8, list=FALSE)
+
+# Step 2: create the training  dataset
+dataset.training <- dataset.red.wines[training.row.numbers,]
+
+# Step 3: create the test dataset
+dataset.testing <- dataset.red.wines[-training.row.numbers,]
+```
+
+```{r}
+str(dataset.training)
+```
+
+
+***
+#### Try several models WITHOUT adjusting outliers
+
+```{r}
+# Define the training control - this problem has THREE classes so ROC is not available
+fit.control <- trainControl(
+    method = 'cv',                   # k-fold cross validation
+    number = 5,                      # number of folds
+    savePredictions = 'final',       # saves predictions for optimal tuning parameter
+    classProbs = T#,                  # should class probabilities be returned
+    #summaryFunction=twoClassSummary  # results summary function
+) 
+```
+
+
+```{r}
+set.seed(100)
+
+set.seed(100)
+
+# train random forest
+model.rf = train(quality ~ ., 
+                 data=dataset.training, 
+                 method='rf', 
+                 tuneLength=5, 
+                 trControl = fit.control)
+
+
+# train SVM
+model.svm = train(quality ~ ., 
+                  data=dataset.training, 
+                  method='svmRadial', 
+                  tuneLength=15, 
+                  trControl = fit.control)
+
+
+# train k-nearest neighbors
+model.knn = train(quality ~ ., 
+                  data=dataset.training, 
+                  method='knn', 
+                  tuneLength=5, 
+                  trControl=fit.control)
+				  
+				  
+# train naive baise classifier
+model.nb = train(quality ~ ., 
+                  data=dataset.training, 
+                  method='nb', 
+                  tuneLength=5, 
+                  trControl=fit.control)
+```
+
+
+```{r}
+# Compare model performances using resample()
+models.compared <- resamples(list(`Random Forest`=model.rf, 
+                                  `SVM`=model.svm,
+                                  `kNN`=model.knn,
+                                  `Naive Bayes`=model.nb
+                                  ))
+
+# Summary of the models performances
+summary(models.compared)
+```
+
+Without any special data treatment, we see that random forest provides a model with 86.3% accuracy, the best of the algorithms chosen.  The variable importance is suspect though, suggesting alcohol level is the most important predictor.
+
+```{r}
+# show the significance of predictors, in order
+varImp(model.rf)
+```
+
+Next step: try dealing with outliers.
+
+***
+#### Try using caret's preProcess()
+
+```{r}
+set.seed(100)
+
+# train random forest
+model.rf = train(quality ~ ., 
+                 data=dataset.training, 
+                 method='rf', 
+                 tuneLength=5, 
+                 preProcess = c("center", "scale"),
+                 trControl = fit.control)
+model.rf
+```
+
+```{r}
+set.seed(100)
+
+# train random forest
+model.rf = train(quality ~ ., 
+                 data=dataset.training, 
+                 method='rf', 
+                 tuneLength=5, 
+                 trControl = fit.control)
+
+
+# train SVM
+model.svm = train(quality ~ ., 
+                  data=dataset.training, 
+                  method='svmRadial', 
+                  tuneLength=15, 
+                  trControl = fit.control)
+
+
+# train k-nearest neighbors
+model.knn = train(quality ~ ., 
+                  data=dataset.training, 
+                  method='knn', 
+                  tuneLength=5, 
+                  trControl=fit.control)
+				  
+				  
+# train naive baise classifier
+model.nb = train(quality ~ ., 
+                  data=dataset.training, 
+                  method='nb', 
+                  tuneLength=5, 
+                  trControl=fit.control)
+```
+
+```{r}
+# Compare model performances using resample()
+models.compared <- resamples(list(`Random Forest`=model.rf, 
+                                  `SVM`=model.svm,
+                                  `kNN`=model.knn,
+                                  `Naive Bayes`=model.nb
+                                  ))
+
+# Summary of the models performances
+summary(models.compared)
+
+```
+
+Using preProcess() did not aid the accuracy at all.
+
+***
+#### Resolve outliers through capping
+
+Try replacing the outliers with capped value, and re-run the algorithms.
+
+For missing values that lie outside the 1.5 x IQR limits, we could cap it by replacing those observations outside the lower limit with the value of 5th %ile and those that lie above the upper limit, with the value of 95th %ile.
+
+```{r}
+# apply capping to dataset.training$fixed.acidity
+qnt <- quantile(dataset.training$fixed.acidity, probs=c(.25, .75), na.rm = T)
+caps <- quantile(dataset.training$fixed.acidity, probs=c(.05, .95), na.rm = T)
+H <- 1.5 * IQR(dataset.training$fixed.acidity, na.rm = T)
+dataset.training$fixed.acidity[dataset.training$fixed.acidity < (qnt[1] - H)] <- caps[1]
+dataset.training$fixed.acidity[dataset.training$fixed.acidity > (qnt[2] + H)] <- caps[2]
+
+# apply capping to dataset.training$volatile.acidity
+qnt <- quantile(dataset.training$volatile.acidity, probs=c(.25, .75), na.rm = T)
+caps <- quantile(dataset.training$volatile.acidity, probs=c(.05, .95), na.rm = T)
+H <- 1.5 * IQR(dataset.training$volatile.acidity, na.rm = T)
+dataset.training$volatile.acidity[dataset.training$volatile.acidity < (qnt[1] - H)] <- caps[1]
+dataset.training$volatile.acidity[dataset.training$volatile.acidity > (qnt[2] + H)] <- caps[2]
+
+# apply capping to dataset.training$citric.acid
+qnt <- quantile(dataset.training$citric.acid, probs=c(.25, .75), na.rm = T)
+caps <- quantile(dataset.training$citric.acid, probs=c(.05, .95), na.rm = T)
+H <- 1.5 * IQR(dataset.training$citric.acid, na.rm = T)
+dataset.training$citric.acid[dataset.training$citric.acid < (qnt[1] - H)] <- caps[1]
+dataset.training$citric.acid[dataset.training$citric.acid > (qnt[2] + H)] <- caps[2]
+
+# apply capping to dataset.training$chlorides
+qnt <- quantile(dataset.training$chlorides, probs=c(.25, .75), na.rm = T)
+caps <- quantile(dataset.training$chlorides, probs=c(.05, .95), na.rm = T)
+H <- 1.5 * IQR(dataset.training$chlorides, na.rm = T)
+dataset.training$chlorides[dataset.training$chlorides < (qnt[1] - H)] <- caps[1]
+dataset.training$chlorides[dataset.training$chlorides > (qnt[2] + H)] <- caps[2]
+
+# apply capping to dataset.training$free.sulfur.dioxide
+qnt <- quantile(dataset.training$free.sulfur.dioxide, probs=c(.25, .75), na.rm = T)
+caps <- quantile(dataset.training$free.sulfur.dioxide, probs=c(.05, .95), na.rm = T)
+H <- 1.5 * IQR(dataset.training$free.sulfur.dioxide, na.rm = T)
+dataset.training$free.sulfur.dioxide[dataset.training$free.sulfur.dioxide < (qnt[1] - H)] <- caps[1]
+dataset.training$free.sulfur.dioxide[dataset.training$free.sulfur.dioxide > (qnt[2] + H)] <- caps[2]
+
+# apply capping to dataset.training$total.sulfur.dioxide
+qnt <- quantile(dataset.training$total.sulfur.dioxide, probs=c(.25, .75), na.rm = T)
+caps <- quantile(dataset.training$total.sulfur.dioxide, probs=c(.05, .95), na.rm = T)
+H <- 1.5 * IQR(dataset.training$total.sulfur.dioxide, na.rm = T)
+dataset.training$total.sulfur.dioxide[dataset.training$total.sulfur.dioxide < (qnt[1] - H)] <- caps[1]
+dataset.training$total.sulfur.dioxide[dataset.training$total.sulfur.dioxide > (qnt[2] + H)] <- caps[2]
+
+# apply capping to dataset.training$density
+qnt <- quantile(dataset.training$density, probs=c(.25, .75), na.rm = T)
+caps <- quantile(dataset.training$density, probs=c(.05, .95), na.rm = T)
+H <- 1.5 * IQR(dataset.training$density, na.rm = T)
+dataset.training$density[dataset.training$density < (qnt[1] - H)] <- caps[1]
+dataset.training$density[dataset.training$density > (qnt[2] + H)] <- caps[2]
+
+# apply capping to dataset.training$pH
+qnt <- quantile(dataset.training$pH, probs=c(.25, .75), na.rm = T)
+caps <- quantile(dataset.training$pH, probs=c(.05, .95), na.rm = T)
+H <- 1.5 * IQR(dataset.training$pH, na.rm = T)
+dataset.training$pH[dataset.training$pH < (qnt[1] - H)] <- caps[1]
+dataset.training$pH[dataset.training$pH > (qnt[2] + H)] <- caps[2]
+
+# apply capping to dataset.training$sulphates
+qnt <- quantile(dataset.training$sulphates, probs=c(.25, .75), na.rm = T)
+caps <- quantile(dataset.training$sulphates, probs=c(.05, .95), na.rm = T)
+H <- 1.5 * IQR(dataset.training$sulphates, na.rm = T)
+dataset.training$sulphates[dataset.training$sulphates < (qnt[1] - H)] <- caps[1]
+dataset.training$sulphates[dataset.training$sulphates > (qnt[2] + H)] <- caps[2]
+
+# apply capping to dataset.training$alcohol
+qnt <- quantile(dataset.training$alcohol, probs=c(.25, .75), na.rm = T)
+caps <- quantile(dataset.training$alcohol, probs=c(.05, .95), na.rm = T)
+H <- 1.5 * IQR(dataset.training$alcohol, na.rm = T)
+dataset.training$alcohol[dataset.training$alcohol < (qnt[1] - H)] <- caps[1]
+dataset.training$alcohol[dataset.training$alcohol > (qnt[2] + H)] <- caps[2]
+
+# apply capping to dataset.training$residual.sugar
+qnt <- quantile(dataset.training$residual.sugar, probs=c(.25, .75), na.rm = T)
+caps <- quantile(dataset.training$residual.sugar, probs=c(.05, .95), na.rm = T)
+H <- 1.5 * IQR(dataset.training$residual.sugar, na.rm = T)
+dataset.training$residual.sugar[dataset.training$residual.sugar < (qnt[1] - H)] <- caps[1]
+dataset.training$residual.sugar[dataset.training$residual.sugar > (qnt[2] + H)] <- caps[2]
+
+```
+
+
+Observe that the number and severity of outliers has been resolved:
+
+```{r}
+# boxplots 
+par(mfrow=c(1,6))
+  for(i in 1:6) {
+  boxplot(dataset.training[,i], main=names(dataset.training)[i])
+  }
+```
+
+```{r}
+# boxplots 
+par(mfrow=c(1,5))
+  for(i in 7:11) {
+  boxplot(dataset.training[,i], main=names(dataset.training)[i])
+  }
+```
+
+```{r}
+# re-build the models with the capped predictors
+set.seed(100)
+
+# train random forest
+model.rf = train(quality ~ ., 
+                 data=dataset.training, 
+                 method='rf', 
+                 tuneLength=5, 
+                 trControl = fit.control)
+
+
+# train SVM
+model.svm = train(quality ~ ., 
+                  data=dataset.training, 
+                  method='svmRadial', 
+                  tuneLength=15, 
+                  trControl = fit.control)
+
+
+# train k-nearest neighbors
+model.knn = train(quality ~ ., 
+                  data=dataset.training, 
+                  method='knn', 
+                  tuneLength=5, 
+                  trControl=fit.control)
+				  
+				  
+# train naive baise classifier
+model.nb = train(quality ~ ., 
+                  data=dataset.training, 
+                  method='nb', 
+                  tuneLength=5, 
+                  trControl=fit.control)
+
+```
+
+```{r}
+# Compare model performances using resample()
+models.compared <- resamples(list(`Random Forest`=model.rf, 
+                                  `SVM`=model.svm,
+                                  `kNN`=model.knn,
+                                  `Naive Bayes`=model.nb
+                                  ))
+
+# Summary of the models performances
+summary(models.compared)
+```
+
+Capping out the outliers has actually *hurt* the accuracy of the models.  It must be concluded that the extreme outliers lead to what make a wine great and not just good.
+
+***
+#### Key Features?
+
+From visual inspection, we see that the 6 most influential predictors are:
+
+* volatile acidity
+* pH
+* density
+* citric acid
+* sulphates
+* alcohol
+
+```{r}
+colnames(dataset.training)
+```
+
+```{r}
+#2 - volatile.acidity
+#9 - pH
+#8 - density
+#3 - citric.acid
+#10 - sulphates
+#11 - alcohol
+
+#x <- dataset.training[c(2,9,8,3,10,11)]
+#y <- dataset.training$quality
+
+set.seed(100)
+
+# train random forest
+model.rf = train(quality ~ ., 
+                 data=dataset.training[c(2,9,8,3,10,11,12)], 
+                 method='rf', 
+                 tuneLength=5, 
+                 trControl = fit.control)
+
+# train SVM
+model.svm = train(quality ~ ., 
+                  data=dataset.training[c(2,9,8,3,10,11,12)], 
+                  method='svmRadial', 
+                  tuneLength=15, 
+                  trControl = fit.control)
+
+
+# train k-nearest neighbors
+model.knn = train(quality ~ ., 
+                  data=dataset.training[c(2,9,8,3,10,11,12)], 
+                  method='knn', 
+                  tuneLength=5, 
+                  trControl=fit.control)
+				  
+				  
+# train naive baise classifier
+model.nb = train(quality ~ ., 
+                  data=dataset.training[c(2,9,8,3,10,11,12)], 
+                  method='nb', 
+                  tuneLength=5, 
+                  trControl=fit.control)
+
+```
+
+```{r}
+# Compare model performances using resample()
+models.compared <- resamples(list(`Random Forest`=model.rf, 
+                                  `SVM`=model.svm,
+                                  `kNN`=model.knn,
+                                  `Naive Bayes`=model.nb
+                                  ))
+
+# Summary of the models performances
+summary(models.compared)
+
+```
+
+Using just the top predictors from visual inspection does *not* help accuracy.
+
+
+***
+### Use RFE to determine the most important features
+
+```{r}
+set.seed(100)
+
+ctrl <- rfeControl(functions = rfFuncs,
+                   method = "repeatedcv",
+                   repeats = 5,
+                   verbose = FALSE)
+
+lmProfile <- rfe(x=dataset.red.wines[, 1:11], y=dataset.red.wines$quality, rfeControl=ctrl)
+
+lmProfile
+```
+
+The top 5 variables (out of 8):
+   alcohol, volatile.acidity, sulphates, total.sulfur.dioxide, residual.sugar
+   
+   (11, 2, 10, 7, 4)
+   
+
+```{r}
+set.seed(100)
+
+# train random forest
+model.rf = train(quality ~ ., 
+                 data=dataset.training[c(4,8,11,10,2,12)], 
+                 method='rf', 
+                 tuneLength=5, 
+                 trControl = fit.control)
+
+# train SVM
+model.svm = train(quality ~ ., 
+                  data=dataset.training[c(4,8,11,12)], 
+                  method='svmRadial', 
+                  tuneLength=15, 
+                  trControl = fit.control)
+
+
+# train k-nearest neighbors
+model.knn = train(quality ~ ., 
+                  data=dataset.training[c(4,8,11,10,2,12)], 
+                  method='knn', 
+                  tuneLength=5, 
+                  trControl=fit.control)
+				  
+				  
+# train naive baise classifier
+model.nb = train(quality ~ ., 
+                  data=dataset.training[c(4,8,11,10,2,12)], 
+                  method='nb', 
+                  tuneLength=5, 
+                  trControl=fit.control)
+
+
+```
+
+```{r}
+# Compare model performances using resample()
+models.compared <- resamples(list(`Random Forest`=model.rf, 
+                                  `SVM`=model.svm,
+                                  `kNN`=model.knn,
+                                  `Naive Bayes`=model.nb
+                                  ))
+
+# Summary of the models performances
+summary(models.compared)
+
+```
+
+Using the features recommended from RFE did not increase the accuracy.
+
+
+
+
+TODO - try PCA and re-model
+
+TODO - write up all conclusions
+
+***
+#### Appendix
+
+```{r}
+#install.packages(c('caret', 'skimr', 'RANN', 'randomForest', 'fastAdaboost', 'gbm', 'xgboost', 'caretEnsemble', 'C50', 'earth'))
+#install.packages('e1071')
+#install.packages('kernlab')
+#install.packages('ellipse')
+#install.packages('PerformanceAnalytics')
+#install.packages('klaR')
+#install.packages('outliers')
+```
+
+> sessionInfo()
+R version 3.5.1 (2018-07-02)
+Platform: x86_64-apple-darwin15.6.0 (64-bit)
+Running under: macOS  10.14.2
+
+Matrix products: default
+BLAS: /System/Library/Frameworks/Accelerate.framework/Versions/A/Frameworks/vecLib.framework/Versions/A/libBLAS.dylib
+LAPACK: /Library/Frameworks/R.framework/Versions/3.5/Resources/lib/libRlapack.dylib
+
+locale:
+[1] en_US.UTF-8/en_US.UTF-8/en_US.UTF-8/C/en_US.UTF-8/en_US.UTF-8
+
+
+
+
+

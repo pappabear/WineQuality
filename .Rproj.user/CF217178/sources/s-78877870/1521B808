@@ -1,0 +1,24 @@
+{
+    "collab_server" : "",
+    "contents" : "",
+    "created" : 1547856349142.000,
+    "dirty" : false,
+    "encoding" : "UTF-8",
+    "folds" : "",
+    "hash" : "613653755",
+    "id" : "1521B808",
+    "lastKnownWriteTime" : 1547910793,
+    "last_content_update" : 1547910793682,
+    "path" : "~/Projects/R/Machine Learning/Tutorial Projects - Simple/WineQuality/WineQualityAnalysis.Rmd",
+    "project_path" : "WineQualityAnalysis.Rmd",
+    "properties" : {
+        "chunk_output_type" : "inline",
+        "cursorPosition" : "653,0",
+        "scrollLine" : "649",
+        "tempName" : "Untitled1"
+    },
+    "relative_order" : 1,
+    "source_on_save" : false,
+    "source_window" : "",
+    "type" : "r_markdown"
+}

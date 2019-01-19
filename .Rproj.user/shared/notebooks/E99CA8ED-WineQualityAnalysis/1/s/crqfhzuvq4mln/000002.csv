@@ -1,0 +1,2 @@
+"0","pca <- prcomp(dataset.training[1:11], scale. = T)"
+"0","biplot(pca, scale = 0)"

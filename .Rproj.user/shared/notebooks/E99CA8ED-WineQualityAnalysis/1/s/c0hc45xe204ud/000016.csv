@@ -1,0 +1,5 @@
+"0","# boxplots "
+"0","par(mfrow=c(1,6))"
+"0","  for(i in 1:6) {"
+"0","  boxplot(x[,i], main=names(dataset.red.wines)[i])"
+"0","  }"

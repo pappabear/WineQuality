@@ -1,0 +1,7 @@
+"0","#install.packages(c('caret', 'skimr', 'RANN', 'randomForest', 'fastAdaboost', 'gbm', 'xgboost', 'caretEnsemble', 'C50', 'earth'))"
+"0","#install.packages('e1071')"
+"0","#install.packages('kernlab')"
+"0","#install.packages('ellipse')"
+"0","#install.packages('PerformanceAnalytics')"
+"0","#install.packages('klaR')"
+"0","#install.packages('outliers')"
